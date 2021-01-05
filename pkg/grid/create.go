@@ -148,6 +148,7 @@ func connectExistingEKSCluster(gridName string, existingEKSCluster *types.EKSExi
 	}
 
 	clusterConfig := types.ClusterConfig{
+		Name:       fmt.Sprintf("aws-%s-%s", existingEKSCluster.Region, existingEKSCluster.ClusterName),
 		Provider:   "aws",
 		IsExisting: true,
 		Region:     existingEKSCluster.Region,

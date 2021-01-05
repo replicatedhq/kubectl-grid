@@ -1,7 +1,7 @@
 apiVersion: grid.replicated.com/v1alpha1
 kind: Grid
 metadata:
-  name: eks-new
+  name: eks-existing
 spec:
   clusters:
     - eks:

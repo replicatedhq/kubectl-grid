@@ -49,6 +49,11 @@ func printGridsJSON(grids []*types.GridConfig) {
 }
 
 func printGridsTable(grids []*types.GridConfig) {
+	if len(grids) == 0 {
+		fmt.Println("No grids found")
+		return
+	}
+
 	w := print.NewTabWriter()
 	defer w.Flush()
 

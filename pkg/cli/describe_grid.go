@@ -47,8 +47,8 @@ func DescribeGridCmd() *cobra.Command {
 func printTextGridDescription(g *types.GridConfig) {
 	clusters := []string{}
 	for _, c := range g.ClusterConfigs {
-		renderedCluster := fmt.Sprintf("    - Name: %s\n      Provider: %s\n",
-			"???", c.Provider)
+		renderedCluster := fmt.Sprintf("  - Name: %s\n    Provider: %s\n",
+			c.Name, c.Provider)
 
 		clusters = append(clusters, renderedCluster)
 	}

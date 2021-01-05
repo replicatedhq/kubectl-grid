@@ -10,6 +10,7 @@ type GridConfig struct {
 }
 
 type ClusterConfig struct {
+	Name       string `json:"name"`
 	Provider   string `json:"provider"`
 	IsExisting bool   `json:"isExisting"`
 	Region     string `json:"region"`

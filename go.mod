@@ -3,42 +3,81 @@ module github.com/replicatedhq/kubectl-grid
 go 1.15
 
 require (
-	cloud.google.com/go v0.37.2 // indirect
 	contrib.go.opencensus.io/exporter/ocagent v0.5.0 // indirect
-	github.com/Azure/go-autorest v11.7.0+incompatible // indirect
+	git.apache.org/thrift.git v0.12.0 // indirect
+	github.com/apache/thrift v0.12.0 // indirect
+	github.com/armon/consul-api v0.0.0-20180202201655-eb2c6b5be1b6 // indirect
 	github.com/aws/aws-sdk-go-v2 v0.31.0
 	github.com/aws/aws-sdk-go-v2/config v0.4.0
 	github.com/aws/aws-sdk-go-v2/credentials v0.2.0
 	github.com/aws/aws-sdk-go-v2/service/eks v0.31.0
-	github.com/evanphx/json-patch v4.5.0+incompatible // indirect
+	github.com/coreos/go-etcd v2.0.0+incompatible // indirect
+	github.com/cpuguy83/go-md2man v1.0.10 // indirect
 	github.com/fatih/color v1.7.0
-	github.com/google/gofuzz v1.0.0 // indirect
-	github.com/googleapis/gnostic v0.3.1 // indirect
+	github.com/golang/lint v0.0.0-20180702182130-06c8688daad7 // indirect
 	github.com/hashicorp/golang-lru v0.5.1 // indirect
 	github.com/imdario/mergo v0.3.7 // indirect
-	github.com/json-iterator/go v1.1.6 // indirect
-	github.com/mailru/easyjson v0.0.0-20180730094502-03f2033d19d5 // indirect
 	github.com/mattn/go-colorable v0.1.1 // indirect
 	github.com/mattn/go-isatty v0.0.7 // indirect
 	github.com/modern-go/reflect2 v1.0.1 // indirect
-	github.com/onsi/ginkgo v1.8.0 // indirect
-	github.com/onsi/gomega v1.5.0 // indirect
+	github.com/openzipkin/zipkin-go v0.1.6 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
-	github.com/pkg/errors v0.8.1
-	github.com/spf13/cobra v0.0.4
-	github.com/spf13/viper v1.4.0
-	golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4 // indirect
-	golang.org/x/net v0.0.0-20190812203447-cdfb69ac37fc // indirect
-	golang.org/x/sync v0.0.0-20190423024810-112230192c58 // indirect
-	golang.org/x/sys v0.0.0-20190804053845-51ab0e2deafa // indirect
-	golang.org/x/text v0.3.2 // indirect
-	k8s.io/api v0.0.0-20190313235455-40a48860b5ab // indirect
-	k8s.io/apimachinery v0.0.0-20190313205120-d7deff9243b1
-	k8s.io/cli-runtime v0.0.0-20190314001948-2899ed30580f
+	github.com/pkg/errors v0.9.1
+	github.com/spf13/cobra v1.1.1
+	github.com/spf13/viper v1.7.0
+	github.com/ugorji/go v1.1.4 // indirect
+	github.com/ugorji/go/codec v0.0.0-20181204163529-d75b2dcb6bc8 // indirect
+	github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77 // indirect
+	golang.org/x/build v0.0.0-20190314133821-5284462c4bec // indirect
+	k8s.io/api v0.20.1
+	k8s.io/apimachinery v0.20.1
+	k8s.io/cli-runtime v0.20.1
 	k8s.io/client-go v11.0.0+incompatible
-	k8s.io/klog v0.4.0 // indirect
-	k8s.io/kube-openapi v0.0.0-20190815110238-8ff09bc626d6 // indirect
-	k8s.io/utils v0.0.0-20190809000727-6c36bc71fc4a // indirect
 	sigs.k8s.io/kustomize v2.0.3+incompatible // indirect
-	sigs.k8s.io/yaml v1.1.0
+	sigs.k8s.io/structured-merge-diff v0.0.0-20190525122527-15d366b2352e // indirect
+	sigs.k8s.io/yaml v1.2.0
 )
+
+replace github.com/appscode/jsonpatch => github.com/gomodules/jsonpatch v2.0.1+incompatible
+
+replace k8s.io/api => k8s.io/api v0.18.0
+
+replace k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.18.0
+
+replace k8s.io/apimachinery => k8s.io/apimachinery v0.18.0
+
+replace k8s.io/apiserver => k8s.io/apiserver v0.18.0
+
+replace k8s.io/cli-runtime => k8s.io/cli-runtime v0.18.0
+
+replace k8s.io/client-go => k8s.io/client-go v0.18.0
+
+replace k8s.io/cloud-provider => k8s.io/cloud-provider v0.18.0
+
+replace k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.18.0
+
+replace k8s.io/code-generator => k8s.io/code-generator v0.18.0
+
+replace k8s.io/component-base => k8s.io/component-base v0.18.0
+
+replace k8s.io/cri-api => k8s.io/cri-api v0.18.0
+
+replace k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.18.0
+
+replace k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.18.0
+
+replace k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.18.0
+
+replace k8s.io/kube-proxy => k8s.io/kube-proxy v0.18.0
+
+replace k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.18.0
+
+replace k8s.io/kubectl => k8s.io/kubectl v0.18.0
+
+replace k8s.io/kubelet => k8s.io/kubelet v0.18.0
+
+replace k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.18.0
+
+replace k8s.io/metrics => k8s.io/metrics v0.18.0
+
+replace k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.18.0
