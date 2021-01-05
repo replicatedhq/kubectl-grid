@@ -125,7 +125,7 @@ func createEKSCluster(gridName string, eksCluster *types.EKSSpec, completedCh ch
 }
 
 func connectExistingEKSCluster(gridName string, existingEKSCluster *types.EKSExistingClusterSpec, completedCh chan string, configFilePath string) {
-	accessKeyId, err := existingEKSCluster.AccessKeyID.String()
+	accessKeyID, err := existingEKSCluster.AccessKeyID.String()
 	if err != nil {
 		completedCh <- fmt.Sprintf("failed to read access key id: %s", err.Error())
 	}
@@ -134,7 +134,7 @@ func connectExistingEKSCluster(gridName string, existingEKSCluster *types.EKSExi
 		completedCh <- fmt.Sprintf("failed to read secret access key: %s", err.Error())
 	}
 
-	kubeConfig, err := GetEKSClusterKubeConfig(existingEKSCluster.Region, accessKeyId, secretAccessKey, existingEKSCluster.ClusterName)
+	kubeConfig, err := GetEKSClusterKubeConfig(existingEKSCluster.Region, accessKeyID, secretAccessKey, existingEKSCluster.ClusterName)
 	if err != nil {
 		completedCh <- fmt.Sprintf("failed to get kubeconfig from eks cluster: %s", err.Error())
 	}
