@@ -2,6 +2,43 @@
 
 A kubectl plugin to create test clusters and manage test runs on the clusters.
 
+## Usage
+
+### Create a grid
+
+```shell
+$ kubectl grid create --from-yaml ./examples/basic/grid.yaml
+```
+
+### Deploy an app to all clusters in the grid
+
+```shell
+$ kubectl grid deploy --grid eks-existing --application ./examples/basic/kots-app.yaml
+```
+
+### List namespaces on one of the clusters in the grid
+
+```shell
+$ kubectl grid get grids
+
+$ kubectl grid describe grid eks-existing
+
+$ kuebctl grid get ns --grid eks-existing --cluster 
+
+```
+
+### Execute an experiment on all applications in the grid
+
+```shell
+
+```
+
+### Delete and clean up all resources created
+
+```shell
+
+```
+
 ## Questions
 
 **Why not Terraform/Pulumi?**  

@@ -9,6 +9,7 @@ type Grid struct {
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 	Spec              GridSpec `json:"spec"`
 }
+
 type GridSpec struct {
 	Clusters []*ClusterSpec `json:"clusters"`
 }
