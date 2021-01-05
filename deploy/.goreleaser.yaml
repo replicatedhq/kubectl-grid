@@ -1,0 +1,44 @@
+project_name: kubectl-grid
+release:
+  github:
+    owner: replicatedhq
+    name: kubectl-grid
+builds:
+  - id: kubectl-grid
+    goos:
+    - linux
+    - windows
+    - darwin
+    goarch:
+    - amd64
+    - "386"
+    env:
+      - CGO_ENABLED=0
+      - GO111MODULE=on
+    main: cmd/kubectl-grid/main.go
+    ldflags: -s -w
+      -X github.com/replicatedhq/kubectl-grid/pkg/version.version={{.Version}}
+      -X github.com/replicatedhq/kubectl-grid/pkg/version.gitSHA={{.Commit}}
+      -X github.com/replicatedhq/kubectl-grid/pkg/version.buildTime={{.Date}}
+      -extldflags "-static"
+    flags: -tags netgo -installsuffix netgo
+    binary: kubectl-grid
+    hooks: {}
+archives:
+  - id: kubectl-grid
+    builds:
+      - kubectl-grid
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: "{{ .Binary }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - licence*
+      - LICENCE*
+      - license*
+      - LICENSE*
+      - readme*
+      - README*
+      - changelog*
+      - CHANGELOG*

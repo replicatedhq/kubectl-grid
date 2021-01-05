@@ -1,0 +1,16 @@
+apiVersion: grid.replicated.com/v1alpha1
+kind: Grid
+metadata:
+  name: eks-new
+spec:
+  clusters:
+    - eks:
+        newCluster:
+          version: "1.18"
+          accessKeyId: 
+            valueFrom:
+              osEnv: AWS_ACCESS_KEY_ID
+          secretAccessKey: 
+            valueFrom:
+              osEnv: AWS_SECRET_ACCESS_KEY
+          region: us-west-1
