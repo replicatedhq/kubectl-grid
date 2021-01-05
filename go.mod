@@ -6,6 +6,10 @@ require (
 	cloud.google.com/go v0.37.2 // indirect
 	contrib.go.opencensus.io/exporter/ocagent v0.5.0 // indirect
 	github.com/Azure/go-autorest v11.7.0+incompatible // indirect
+	github.com/aws/aws-sdk-go-v2 v0.31.0
+	github.com/aws/aws-sdk-go-v2/config v0.4.0
+	github.com/aws/aws-sdk-go-v2/credentials v0.2.0
+	github.com/aws/aws-sdk-go-v2/service/eks v0.31.0
 	github.com/evanphx/json-patch v4.5.0+incompatible // indirect
 	github.com/fatih/color v1.7.0
 	github.com/google/gofuzz v1.0.0 // indirect
@@ -20,7 +24,7 @@ require (
 	github.com/onsi/ginkgo v1.8.0 // indirect
 	github.com/onsi/gomega v1.5.0 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
-	github.com/pkg/errors v0.8.1 // indirect
+	github.com/pkg/errors v0.8.1
 	github.com/spf13/cobra v0.0.4
 	github.com/spf13/viper v1.4.0
 	golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4 // indirect

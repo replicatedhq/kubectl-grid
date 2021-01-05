@@ -40,7 +40,7 @@ func CreateCmd() *cobra.Command {
 				gridSpec.Name = v.GetString("name")
 			}
 
-			if err := grid.Create(&gridSpec); err != nil {
+			if err := grid.Create(v.GetString("config-file"), &gridSpec); err != nil {
 				return err
 			}
 			return nil

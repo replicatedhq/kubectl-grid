@@ -5,8 +5,8 @@ metadata:
 spec:
   clusters:
     - eks:
-        newCluster:
-          version: "1.18"
+        existingCluster:
+          clusterName: marc-projects
           accessKeyId: 
             valueFrom:
               osEnv: AWS_ACCESS_KEY_ID

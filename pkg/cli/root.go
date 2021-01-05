@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -34,6 +35,8 @@ func RootCmd() *cobra.Command {
 
 	KubernetesConfigFlags = genericclioptions.NewConfigFlags(false)
 	KubernetesConfigFlags.AddFlags(cmd.Flags())
+
+	cmd.PersistentFlags().String("config-file", filepath.Join(homeDir(), ".grid", "config"), "Path to the grid config file to store current grids")
 
 	cmd.AddCommand(CreateCmd())
 
