@@ -25,7 +25,9 @@ func unlockConfig() {
 
 func loadConfig(path string) (*types.GridsConfig, error) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		cfg := types.GridsConfig{}
+		cfg := types.GridsConfig{
+			GridConfigs: []*types.GridConfig{},
+		}
 		b, err := yaml.Marshal(cfg)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to marshal empty config")

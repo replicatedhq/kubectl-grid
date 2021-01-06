@@ -4,16 +4,16 @@ metadata:
   name: eks-existing
 spec:
   clusters:
-    - eks:
-        existingCluster:
-          clusterName: marc-projects
-          accessKeyId: 
-            valueFrom:
-              osEnv: AWS_ACCESS_KEY_ID
-          secretAccessKey: 
-            valueFrom:
-              osEnv: AWS_SECRET_ACCESS_KEY
-          region: us-west-1
+    # - eks:
+    #     existingCluster:
+    #       clusterName: marc-projects
+    #       accessKeyId: 
+    #         valueFrom:
+    #           osEnv: AWS_ACCESS_KEY_ID
+    #       secretAccessKey: 
+    #         valueFrom:
+    #           osEnv: AWS_SECRET_ACCESS_KEY
+    #       region: us-west-1
     - eks:
         newCluster:
           description: another
