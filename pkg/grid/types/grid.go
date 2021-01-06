@@ -42,5 +42,5 @@ type EKSNewClusterSpec struct {
 }
 
 func (c EKSNewClusterSpec) GetDeterministicClusterName() string {
-	return fmt.Sprintf("%x", md5.Sum([]byte(fmt.Sprintf("%s-%s-%s", c.Description, c.Region, c.Version))))
+	return fmt.Sprintf("grid-%x", md5.Sum([]byte(fmt.Sprintf("%s-%s-%s", c.Description, c.Region, c.Version))))
 }
