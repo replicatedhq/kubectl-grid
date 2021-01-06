@@ -1,9 +1,16 @@
 package grid
 
 import (
+	"context"
+	"crypto/md5"
 	"fmt"
 	"reflect"
 
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/eks"
+	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/pkg/errors"
 	"github.com/replicatedhq/kubectl-grid/pkg/grid/types"
 )
@@ -163,9 +170,60 @@ func connectExistingEKSCluster(gridName string, existingEKSCluster *types.EKSExi
 	if err := saveConfig(c, configFilePath); err != nil {
 		completedCh <- fmt.Sprintf("error saving config: %s", err.Error())
 	}
-	completedCh <- "not implemented"
+
+	completedCh <- ""
 }
 
 func createNewEKSCluter(gridName string, newEKSCluster *types.EKSNewClusterSpec, completedCh chan string, configFilePath string) {
-	completedCh <- "not implemented"
+	clusterName := newEKSCluster.GetDeterministicClusterName()
+
+	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(newEKSCluster.Region))
+	if err != nil {
+		completedCh <- fmt.Sprintf("error loading aws config: %s", err.Error())
+		return
+	}
+
+	accessKeyID, err := newEKSCluster.AccessKeyID.String()
+	if err != nil {
+		completedCh <- fmt.Sprintf("error retreiving access key id: %s", err.Error())
+		return
+	}
+	secretAccessKey, err := newEKSCluster.SecretAccessKey.String()
+	if err != nil {
+		completedCh <- fmt.Sprintf("error retrieving secret access key: %s", err.Error())
+		return
+	}
+
+	cfg.Credentials = credentials.NewStaticCredentialsProvider(accessKeyID, secretAccessKey, "")
+
+	vpc, err := ensureEKSClusterVPC(cfg)
+	if err != nil {
+		completedCh <- fmt.Sprintf("failed to create security group: %s", err.Error())
+		return
+	}
+
+	svc := eks.NewFromConfig(cfg)
+
+	if newEKSCluster.Version == "" {
+		newEKSCluster.Version = "1.18"
+	}
+
+	input := &eks.CreateClusterInput{
+		ClientRequestToken: aws.String(fmt.Sprintf("kubectl-grid-%x", md5.Sum([]byte(clusterName)))),
+		Name:               aws.String(clusterName),
+		ResourcesVpcConfig: &ekstypes.VpcConfigRequest{
+			SecurityGroupIds: vpc.SecurityGroupIDs,
+			SubnetIds:        vpc.SubnetIDs,
+		},
+		RoleArn: aws.String(vpc.RoleArn),
+		Version: aws.String(newEKSCluster.Version),
+	}
+
+	_, err = svc.CreateCluster(context.Background(), input)
+	if err != nil {
+		completedCh <- fmt.Sprintf("error to create cluster: %s", err.Error())
+		return
+	}
+
+	completedCh <- ""
 }

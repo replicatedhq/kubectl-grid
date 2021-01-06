@@ -7,10 +7,13 @@ require (
 	git.apache.org/thrift.git v0.12.0 // indirect
 	github.com/apache/thrift v0.12.0 // indirect
 	github.com/armon/consul-api v0.0.0-20180202201655-eb2c6b5be1b6 // indirect
+	github.com/aws/aws-sdk-go v1.28.2
 	github.com/aws/aws-sdk-go-v2 v0.31.0
 	github.com/aws/aws-sdk-go-v2/config v0.4.0
 	github.com/aws/aws-sdk-go-v2/credentials v0.2.0
+	github.com/aws/aws-sdk-go-v2/service/ec2 v0.31.0
 	github.com/aws/aws-sdk-go-v2/service/eks v0.31.0
+	github.com/aws/aws-sdk-go-v2/service/iam v0.31.0
 	github.com/coreos/go-etcd v2.0.0+incompatible // indirect
 	github.com/cpuguy83/go-md2man v1.0.10 // indirect
 	github.com/fatih/color v1.7.0

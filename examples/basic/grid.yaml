@@ -14,3 +14,13 @@ spec:
             valueFrom:
               osEnv: AWS_SECRET_ACCESS_KEY
           region: us-west-1
+    - eks:
+        newCluster:
+          description: another
+          accessKeyId: 
+            valueFrom:
+              osEnv: AWS_ACCESS_KEY_ID
+          secretAccessKey: 
+            valueFrom:
+              osEnv: AWS_SECRET_ACCESS_KEY
+          region: us-west-1

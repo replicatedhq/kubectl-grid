@@ -1,6 +1,9 @@
 package types
 
 import (
+	"crypto/md5"
+	"fmt"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -31,8 +34,13 @@ type EKSExistingClusterSpec struct {
 }
 
 type EKSNewClusterSpec struct {
+	Description     string           `json:"description,omitempty"`
 	Version         string           `json:"version,omitempty"`
 	AccessKeyID     ValueOrValueFrom `json:"accessKeyId"`
 	SecretAccessKey ValueOrValueFrom `json:"secretAccessKey"`
 	Region          string           `json:"region"`
+}
+
+func (c EKSNewClusterSpec) GetDeterministicClusterName() string {
+	return fmt.Sprintf("%x", md5.Sum([]byte(fmt.Sprintf("%s-%s-%s", c.Description, c.Region, c.Version))))
 }
