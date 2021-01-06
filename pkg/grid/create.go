@@ -219,13 +219,11 @@ func createNewEKSCluter(gridName string, newEKSCluster *types.EKSNewClusterSpec,
 	}
 
 	log.Info("Creating EKS Cluster Node Group")
-	nodePool, err := ensureEKSClusterNodeGroup(cfg, cluster, clusterName, vpc)
+	_, err = ensureEKSClusterNodeGroup(cfg, cluster, clusterName, vpc)
 	if err != nil {
 		completedCh <- fmt.Sprintf("failed to create eks cluster node pool: %s", err.Error())
 		return
 	}
-
-	fmt.Printf("%#v\n", nodePool)
 
 	completedCh <- ""
 }

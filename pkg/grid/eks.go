@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -112,7 +113,7 @@ func getEKSClusterIsReady(region string, accessKeyID string, secretAccessKey str
 func ensureEKSClusterVPC(cfg aws.Config) (*types.AWSVPC, error) {
 	vpc := types.AWSVPC{}
 
-	// all clusters end ip in a single VPC with a tag "replicatedhq-mopgrid=1"
+	// all clusters end ip in a single VPC with a tag "replicatedhq-kubectl-grid=1"
 	// look for this vpc and create if missing
 	svc := ec2.NewFromConfig(cfg)
 
@@ -121,7 +122,7 @@ func ensureEKSClusterVPC(cfg aws.Config) (*types.AWSVPC, error) {
 			{
 				Name: aws.String("tag-key"),
 				Values: []string{
-					"replicatedhq/mopgrid",
+					"replicatedhq/kubectl-grid",
 				},
 			},
 		},
@@ -141,7 +142,7 @@ func ensureEKSClusterVPC(cfg aws.Config) (*types.AWSVPC, error) {
 					ResourceType: ec2types.ResourceTypeVpc,
 					Tags: []ec2types.Tag{
 						{
-							Key:   aws.String("replicatedhq/mopgrid"),
+							Key:   aws.String("replicatedhq/kubectl-grid"),
 							Value: aws.String("1"),
 						},
 					},
@@ -188,7 +189,7 @@ func ensureEKSClusterSecurityGroup(cfg aws.Config, vpcID string) (string, error)
 			{
 				Name: aws.String("tag-key"),
 				Values: []string{
-					"replicatedhq/mopgrid",
+					"replicatedhq/kubectl-grid",
 				},
 			},
 		},
@@ -202,15 +203,15 @@ func ensureEKSClusterSecurityGroup(cfg aws.Config, vpcID string) (string, error)
 	}
 
 	createSecurityGroupInput := &ec2.CreateSecurityGroupInput{
-		Description: aws.String("replicatedhq mopgrid"),
-		GroupName:   aws.String("replicatedhq-mopgrid-default"),
+		Description: aws.String("replicatedhq kubectl-grid"),
+		GroupName:   aws.String("replicatedhq-kubectl-grid-default"),
 		VpcId:       aws.String(vpcID),
 		TagSpecifications: []ec2types.TagSpecification{
 			{
 				ResourceType: ec2types.ResourceTypeSecurityGroup,
 				Tags: []ec2types.Tag{
 					{
-						Key:   aws.String("replicatedhq/mopgrid"),
+						Key:   aws.String("replicatedhq/kubectl-grid"),
 						Value: aws.String("1"),
 					},
 				},
@@ -233,7 +234,7 @@ func ensureEKSSubnets(cfg aws.Config, vpcID string) ([]string, error) {
 			{
 				Name: aws.String("tag-key"),
 				Values: []string{
-					"replicatedhq/mopgrid",
+					"replicatedhq/kubectl-grid",
 				},
 			},
 		},
@@ -281,7 +282,7 @@ func createSubnetInVPC(cfg aws.Config, vpcID string, cidrBlock string, az string
 				ResourceType: ec2types.ResourceTypeSubnet,
 				Tags: []ec2types.Tag{
 					{
-						Key:   aws.String("replicatedhq/mopgrid"),
+						Key:   aws.String("replicatedhq/kubectl-grid"),
 						Value: aws.String("1"),
 					},
 				},
@@ -337,7 +338,7 @@ func ensureEKSRoleARN(cfg aws.Config) (string, error) {
 	}
 
 	createRoleInput := iam.CreateRoleInput{
-		RoleName:                 aws.String("mopgrid"),
+		RoleName:                 aws.String("kubectl-grid"),
 		Path:                     aws.String("/replicatedhq/"),
 		AssumeRolePolicyDocument: aws.String(string(rolePolicy)),
 	}
@@ -346,25 +347,39 @@ func ensureEKSRoleARN(cfg aws.Config) (string, error) {
 		return "", errors.Wrap(err, "failed to create role")
 	}
 
-	_, err = svc.AttachRolePolicy(context.Background(), &iam.AttachRolePolicyInput{
-		PolicyArn: aws.String("arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"),
-		RoleName:  aws.String("mopgrid"),
-	})
-	if err != nil {
-		return "", errors.Wrap(err, "failed to attach policy")
+	if err := attachRolePolicy(cfg, "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"); err != nil {
+		return "", errors.Wrap(err, "failed to attach policy 1")
 	}
-
-	_, err = svc.AttachRolePolicy(context.Background(), &iam.AttachRolePolicyInput{
-		PolicyArn: aws.String("arn:aws:iam::aws:policy/AmazonEKSServicePolicy"),
-		RoleName:  aws.String("mopgrid"),
-	})
-	if err != nil {
-		return "", errors.Wrap(err, "failed to attach policy")
+	if err := attachRolePolicy(cfg, "arn:aws:iam::aws:policy/AmazonEKSServicePolicy"); err != nil {
+		return "", errors.Wrap(err, "failed to attach policy 2")
+	}
+	if err := attachRolePolicy(cfg, "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"); err != nil {
+		return "", errors.Wrap(err, "failed to attach policy 3")
+	}
+	if err := attachRolePolicy(cfg, "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"); err != nil {
+		return "", errors.Wrap(err, "failed to attach policy 4")
 	}
 
 	return *result.Role.Arn, nil
 }
 
+func attachRolePolicy(cfg aws.Config, policyName string) error {
+	svc := iam.NewFromConfig(cfg)
+
+	_, err := svc.AttachRolePolicy(context.Background(), &iam.AttachRolePolicyInput{
+		PolicyArn: aws.String(policyName),
+		RoleName:  aws.String("kubectl-grid"),
+	})
+	if err != nil {
+		// what is happening here?
+		if strings.Contains(err.Error(), "deserialization failed") {
+			return nil
+		}
+		return errors.Wrap(err, "failed to attach policy")
+	}
+
+	return nil
+}
 func ensureEKSCluterControlPlane(cfg aws.Config, newEKSCluster *types.EKSNewClusterSpec, clusterName string, vpc *types.AWSVPC) (*ekstypes.Cluster, error) {
 	svc := eks.NewFromConfig(cfg)
 
