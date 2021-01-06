@@ -2,8 +2,10 @@ package grid
 
 import (
 	"context"
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -86,7 +88,9 @@ func GetEKSClusterNodePoolIsReady(region string, accessKeyID string, secretAcces
 	return result.Nodegroup.Status == ekstypes.NodegroupStatusActive, nil
 }
 
-func GetEKSClusterIsReady(region string, accessKeyID string, secretAccessKey string, clusterName string) (bool, error) {
+// getEKSClusterIsReady will return a bool if the cluster is completely ready for workloads
+// we look at the cluster status in the AWS response to be "active"
+func getEKSClusterIsReady(region string, accessKeyID string, secretAccessKey string, clusterName string) (bool, error) {
 	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
 	if err != nil {
 		return false, errors.Wrap(err, "failed to load aws config")
@@ -102,28 +106,6 @@ func GetEKSClusterIsReady(region string, accessKeyID string, secretAccessKey str
 	}
 
 	return result.Cluster.Status == ekstypes.ClusterStatusActive, nil
-}
-
-func CreateEKSClusterNodePool(region string, accessKeyID string, secretAccessKey string, clusterName string, subnetIDs []string, nodeRoleArn string) error {
-	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
-	if err != nil {
-		return errors.Wrap(err, "failed to load aws config")
-	}
-	cfg.Credentials = credentials.NewStaticCredentialsProvider(accessKeyID, secretAccessKey, "")
-
-	svc := eks.NewFromConfig(cfg)
-
-	_, err = svc.CreateNodegroup(context.Background(), &eks.CreateNodegroupInput{
-		ClusterName:   aws.String(clusterName),
-		NodeRole:      aws.String(nodeRoleArn),
-		NodegroupName: aws.String(clusterName),
-		Subnets:       subnetIDs,
-	})
-	if err != nil {
-		return errors.Wrap(err, "failed to create eks node group")
-	}
-
-	return nil
 }
 
 // ensureEKSCluster will create the deterministic vpc for our clusters
@@ -381,4 +363,80 @@ func ensureEKSRoleARN(cfg aws.Config) (string, error) {
 	}
 
 	return *result.Role.Arn, nil
+}
+
+func ensureEKSCluterControlPlane(cfg aws.Config, newEKSCluster *types.EKSNewClusterSpec, clusterName string, vpc *types.AWSVPC) (*ekstypes.Cluster, error) {
+	svc := eks.NewFromConfig(cfg)
+
+	version := newEKSCluster.Version
+	if version == "" {
+		version = "1.18"
+	}
+
+	input := &eks.CreateClusterInput{
+		ClientRequestToken: aws.String(fmt.Sprintf("kubectl-grid-%x", md5.Sum([]byte(clusterName)))),
+		Name:               aws.String(clusterName),
+		ResourcesVpcConfig: &ekstypes.VpcConfigRequest{
+			SecurityGroupIds: vpc.SecurityGroupIDs,
+			SubnetIds:        vpc.SubnetIDs,
+		},
+		RoleArn: aws.String(vpc.RoleArn),
+		Version: aws.String(version),
+	}
+
+	createdCluster, err := svc.CreateCluster(context.Background(), input)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create eks custer")
+	}
+
+	return createdCluster.Cluster, nil
+}
+
+func waitForClusterToBeActive(newEKSCluster *types.EKSNewClusterSpec, accessKeyID string, secretAccessKey string, clusterName string) error {
+	resultCh := make(chan string)
+	keepTrying := true
+	go func() {
+		for keepTrying {
+			isReady, err := getEKSClusterIsReady(newEKSCluster.Region, accessKeyID, secretAccessKey, clusterName)
+			if err != nil {
+				resultCh <- fmt.Sprintf("error checking cluster status: %s", err.Error())
+				return
+			}
+
+			if isReady {
+				keepTrying = false
+				resultCh <- ""
+				return
+			}
+
+			time.Sleep(time.Second * 9)
+		}
+	}()
+
+	select {
+	case res := <-resultCh:
+		if res != "" {
+			return errors.New(res)
+		}
+		return nil
+	case <-time.After(20 * time.Minute):
+		keepTrying = false
+		return errors.New("timeout waiting for cluster")
+	}
+}
+
+func ensureEKSClusterNodeGroup(cfg aws.Config, cluster *ekstypes.Cluster, clusterName string, vpc *types.AWSVPC) (*ekstypes.Nodegroup, error) {
+	svc := eks.NewFromConfig(cfg)
+
+	nodeGroup, err := svc.CreateNodegroup(context.Background(), &eks.CreateNodegroupInput{
+		ClusterName:   aws.String(clusterName),
+		NodeRole:      aws.String(vpc.RoleArn),
+		NodegroupName: aws.String(clusterName),
+		Subnets:       vpc.SubnetIDs,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create eks node group")
+	}
+
+	return nodeGroup.Nodegroup, nil
 }

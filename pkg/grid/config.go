@@ -69,3 +69,28 @@ func saveConfig(cfg *types.GridsConfig, path string) error {
 
 	return nil
 }
+
+func removeGridFromConfig(name string, path string) error {
+	lockConfig()
+	defer unlockConfig()
+
+	oldCfg, err := loadConfig(path)
+	if err != nil {
+		return errors.Wrap(err, "failed to load config")
+	}
+
+	newCfg := types.GridsConfig{}
+	for _, g := range oldCfg.GridConfigs {
+		if g.Name == name {
+			continue
+		}
+
+		newCfg.GridConfigs = append(newCfg.GridConfigs, g)
+	}
+
+	if err := saveConfig(&newCfg, path); err != nil {
+		return errors.Wrap(err, "failed to save config")
+	}
+
+	return nil
+}

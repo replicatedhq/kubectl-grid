@@ -36,7 +36,7 @@ $ kuebctl grid get ns --grid eks-existing --cluster
 ### Delete and clean up all resources created
 
 ```shell
-
+$ kubectl grid delete my-grid
 ```
 
 ## Questions

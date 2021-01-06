@@ -2,17 +2,14 @@ package grid
 
 import (
 	"context"
-	"crypto/md5"
 	"fmt"
 	"reflect"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/eks"
-	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/pkg/errors"
 	"github.com/replicatedhq/kubectl-grid/pkg/grid/types"
+	"github.com/replicatedhq/kubectl-grid/pkg/logger"
 )
 
 // Create will create the grid defined in the gridSpec
@@ -174,8 +171,13 @@ func connectExistingEKSCluster(gridName string, existingEKSCluster *types.EKSExi
 	completedCh <- ""
 }
 
+// createNewEKSCluster will create a complete, ready to use EKS cluster with all
+// security groups, vpcs, node pools, and everything else
 func createNewEKSCluter(gridName string, newEKSCluster *types.EKSNewClusterSpec, completedCh chan string, configFilePath string) {
 	clusterName := newEKSCluster.GetDeterministicClusterName()
+
+	log := logger.NewLogger()
+	log.Info("Creating EKS cluster with all required dependencies with name %s", clusterName)
 
 	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(newEKSCluster.Region))
 	if err != nil {
@@ -196,34 +198,34 @@ func createNewEKSCluter(gridName string, newEKSCluster *types.EKSNewClusterSpec,
 
 	cfg.Credentials = credentials.NewStaticCredentialsProvider(accessKeyID, secretAccessKey, "")
 
+	log.Info("Creating VPC for EKS cluster")
 	vpc, err := ensureEKSClusterVPC(cfg)
 	if err != nil {
 		completedCh <- fmt.Sprintf("failed to create security group: %s", err.Error())
 		return
 	}
 
-	svc := eks.NewFromConfig(cfg)
-
-	if newEKSCluster.Version == "" {
-		newEKSCluster.Version = "1.18"
-	}
-
-	input := &eks.CreateClusterInput{
-		ClientRequestToken: aws.String(fmt.Sprintf("kubectl-grid-%x", md5.Sum([]byte(clusterName)))),
-		Name:               aws.String(clusterName),
-		ResourcesVpcConfig: &ekstypes.VpcConfigRequest{
-			SecurityGroupIds: vpc.SecurityGroupIDs,
-			SubnetIds:        vpc.SubnetIDs,
-		},
-		RoleArn: aws.String(vpc.RoleArn),
-		Version: aws.String(newEKSCluster.Version),
-	}
-
-	_, err = svc.CreateCluster(context.Background(), input)
+	log.Info("Creating EKS Cluster Control Plane")
+	cluster, err := ensureEKSCluterControlPlane(cfg, newEKSCluster, clusterName, vpc)
 	if err != nil {
-		completedCh <- fmt.Sprintf("error to create cluster: %s", err.Error())
+		completedCh <- fmt.Sprintf("failed to create eks cluster control plane: %s", err.Error())
 		return
 	}
+
+	log.Info("Waiting for EKS Cluster Control Plane to be ready (this can take a while, 15 minutes is not unusual)")
+	if err := waitForClusterToBeActive(newEKSCluster, accessKeyID, secretAccessKey, clusterName); err != nil {
+		completedCh <- fmt.Sprintf("cluster did not become ready")
+		return
+	}
+
+	log.Info("Creating EKS Cluster Node Group")
+	nodePool, err := ensureEKSClusterNodeGroup(cfg, cluster, clusterName, vpc)
+	if err != nil {
+		completedCh <- fmt.Sprintf("failed to create eks cluster node pool: %s", err.Error())
+		return
+	}
+
+	fmt.Printf("%#v\n", nodePool)
 
 	completedCh <- ""
 }
