@@ -141,7 +141,7 @@ func isApplicationReady(c *types.ClusterConfig, kotsAppSpec *types.KOTSApplicati
 	}
 }
 
-func deployKOTSApplication(c *types.ClusterConfig, kotsAppSpec *types.KOTSApplicationSpec, completedCh chan string) error {
+func deployKOTSApplication(c *types.ClusterConfig, kotsAppSpec *types.KOTSApplicationSpec) error {
 	// ensure we have the right version of KOTS
 	pathToKOTSBinary, err := downloadKOTSBinary(kotsAppSpec.Version)
 	if err != nil {

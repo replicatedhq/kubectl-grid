@@ -52,7 +52,14 @@ func Deploy(g *types.GridConfig, a *types.Application) error {
 	// deploy the app
 	for i, c := range g.ClusterConfigs {
 		if a.Spec.KOTSApplicationSpec != nil {
-			go deployKOTSApplication(c, a.Spec.KOTSApplicationSpec, completedChans[i])
+			go func() {
+				err := deployKOTSApplication(c, a.Spec.KOTSApplicationSpec)
+				if err != nil {
+					completedChans[i] <- err.Error()
+				} else {
+					completedChans[i] <- ""
+				}
+			}()
 		}
 	}
 
