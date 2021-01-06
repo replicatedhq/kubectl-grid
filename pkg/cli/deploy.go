@@ -23,7 +23,7 @@ func DeployCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			v := viper.GetViper()
 
-			data, err := ioutil.ReadFile(v.GetString("application"))
+			data, err := ioutil.ReadFile(v.GetString("app"))
 			if err != nil {
 				return err
 			}
@@ -53,7 +53,7 @@ func DeployCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringP("grid", "g", "", "Name of the grid")
-	cmd.Flags().String("application", "", "Path to YAML manifest describing the application to deploy")
+	cmd.Flags().String("app", "", "Path to YAML manifest describing the application to deploy")
 
 	return cmd
 }
