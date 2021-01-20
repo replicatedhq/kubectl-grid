@@ -225,5 +225,35 @@ func createNewEKSCluter(gridName string, newEKSCluster *types.EKSNewClusterSpec,
 		return
 	}
 
+	kubeConfig, err := GetEKSClusterKubeConfig(newEKSCluster.Region, accessKeyID, secretAccessKey, *cluster.Name)
+	if err != nil {
+		completedCh <- fmt.Sprintf("failed to get kubeconfig from eks cluster: %s", err.Error())
+	}
+
+	lockConfig()
+	defer unlockConfig()
+	c, err := loadConfig(configFilePath)
+	if err != nil {
+		completedCh <- fmt.Sprintf("failed to load config: %s", err.Error())
+		return
+	}
+
+	clusterConfig := types.ClusterConfig{
+		Name:       fmt.Sprintf("aws-%s-%s", newEKSCluster.Region, *cluster.Name),
+		Provider:   "aws",
+		IsExisting: false,
+		Region:     newEKSCluster.Region,
+		Kubeconfig: kubeConfig,
+	}
+
+	for _, gridConfig := range c.GridConfigs {
+		if gridConfig.Name == gridName {
+			gridConfig.ClusterConfigs = append(gridConfig.ClusterConfigs, &clusterConfig)
+		}
+	}
+	if err := saveConfig(c, configFilePath); err != nil {
+		completedCh <- fmt.Sprintf("error saving config: %s", err.Error())
+	}
+
 	completedCh <- ""
 }
