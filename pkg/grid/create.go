@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/pkg/errors"
 	"github.com/replicatedhq/kubectl-grid/pkg/grid/types"
+	"github.com/replicatedhq/kubectl-grid/pkg/kubectl"
 	"github.com/replicatedhq/kubectl-grid/pkg/logger"
 )
 
@@ -230,14 +232,6 @@ func createNewEKSCluter(gridName string, newEKSCluster *types.EKSNewClusterSpec,
 		completedCh <- fmt.Sprintf("failed to get kubeconfig from eks cluster: %s", err.Error())
 	}
 
-	lockConfig()
-	defer unlockConfig()
-	c, err := loadConfig(configFilePath)
-	if err != nil {
-		completedCh <- fmt.Sprintf("failed to load config: %s", err.Error())
-		return
-	}
-
 	clusterConfig := types.ClusterConfig{
 		Name:       fmt.Sprintf("aws-%s-%s", newEKSCluster.Region, *cluster.Name),
 		Provider:   "aws",
@@ -246,14 +240,58 @@ func createNewEKSCluter(gridName string, newEKSCluster *types.EKSNewClusterSpec,
 		Kubeconfig: kubeConfig,
 	}
 
-	for _, gridConfig := range c.GridConfigs {
-		if gridConfig.Name == gridName {
-			gridConfig.ClusterConfigs = append(gridConfig.ClusterConfigs, &clusterConfig)
+	func() {
+		lockConfig()
+		defer unlockConfig()
+		c, err := loadConfig(configFilePath)
+		if err != nil {
+			completedCh <- fmt.Sprintf("failed to load config: %s", err.Error())
+			return
 		}
-	}
-	if err := saveConfig(c, configFilePath); err != nil {
-		completedCh <- fmt.Sprintf("error saving config: %s", err.Error())
+
+		for _, gridConfig := range c.GridConfigs {
+			if gridConfig.Name == gridName {
+				gridConfig.ClusterConfigs = append(gridConfig.ClusterConfigs, &clusterConfig)
+			}
+		}
+		if err := saveConfig(c, configFilePath); err != nil {
+			completedCh <- fmt.Sprintf("error saving config: %s", err.Error())
+		}
+	}()
+
+	if err := ensureEKSAuthMap(&clusterConfig, vpc.RoleArn); err != nil {
+		completedCh <- fmt.Sprintf("failed to ensure aws-auth configmap: %s", err.Error())
 	}
 
 	completedCh <- ""
+}
+
+func ensureEKSAuthMap(c *types.ClusterConfig, roleArn string) error {
+	// ARN can't be a path, so if it's more than 2 parts, everything in the middle needs to be removed
+	arnParts := strings.Split(roleArn, "/")
+	if len(arnParts) > 2 {
+		roleArn = fmt.Sprintf("%s/%s", arnParts[0], arnParts[len(arnParts)-1])
+	}
+
+	yamlDoc := `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aws-auth
+  namespace: kube-system
+data:
+  mapRoles: |
+    - rolearn: %s
+      username: system:node:{{EC2PrivateDNSName}}
+      groups:
+        - system:bootstrappers
+        - system:nodes
+
+`
+	yamlDoc = fmt.Sprintf(yamlDoc, roleArn)
+	if err := kubectl.Apply(c, yamlDoc); err != nil {
+		return errors.Wrap(err, "failed to apply aws-auth configmap")
+	}
+
+	return nil
 }
