@@ -359,6 +359,9 @@ func ensureEKSRoleARN(cfg aws.Config) (string, error) {
 	if err := attachRolePolicy(cfg, "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"); err != nil {
 		return "", errors.Wrap(err, "failed to attach policy 4")
 	}
+	if err := attachRolePolicy(cfg, "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"); err != nil {
+		return "", errors.Wrap(err, "failed to attach policy 5")
+	}
 
 	return *result.Role.Arn, nil
 }
