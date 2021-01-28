@@ -157,6 +157,12 @@ func ensureEKSClusterVPC(cfg aws.Config) (*types.AWSVPC, error) {
 		vpc.ID = *createVPCResult.Vpc.VpcId
 	}
 
+	igwID, err := ensureInternetGateway(cfg, vpc.ID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to ensure internet gateway")
+	}
+	vpc.InternetGatewayID = igwID
+
 	securityGroupID, err := ensureEKSClusterSecurityGroup(cfg, vpc.ID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to ensure security group")
@@ -165,11 +171,41 @@ func ensureEKSClusterVPC(cfg aws.Config) (*types.AWSVPC, error) {
 		securityGroupID,
 	}
 
-	subnetIDs, err := ensureEKSSubnets(cfg, vpc.ID)
+	privateSubnetIDs, err := ensurePrivateEKSSubnets(cfg, vpc.ID)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to ensure subnets")
+		return nil, errors.Wrap(err, "failed to ensure private subnets")
 	}
-	vpc.SubnetIDs = subnetIDs
+	vpc.PrivateSubnetIDs = privateSubnetIDs
+
+	publicSubnetID, err := ensurePublicEKSSubnet(cfg, vpc.ID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to ensure public subnets")
+	}
+	vpc.PublicSubnetID = publicSubnetID
+
+	err = ensurePublicSubnetRouteTable(cfg, vpc.ID, vpc.PublicSubnetID, vpc.InternetGatewayID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to ensure public subnet route table")
+	}
+
+	eipAllocationID, err := ensureElasticIP(cfg)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to ensure elastic ip")
+	}
+	vpc.EIPAllocationID = eipAllocationID
+
+	natGatewayID, err := ensureNATGateway(cfg, vpc.PublicSubnetID, vpc.EIPAllocationID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to ensure nat gateway")
+	}
+	vpc.NATGatewayID = natGatewayID
+
+	for _, subnetID := range vpc.PrivateSubnetIDs {
+		err = ensurePrivateSubnetRouteTable(cfg, vpc.ID, subnetID, vpc.NATGatewayID)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to ensure private subnet route table")
+		}
+	}
 
 	roleArn, err := ensureEKSRoleARN(cfg)
 	if err != nil {
@@ -180,7 +216,59 @@ func ensureEKSClusterVPC(cfg aws.Config) (*types.AWSVPC, error) {
 	return &vpc, nil
 }
 
-// ensureEKSClusterSecurityGroup will create or return the deterministic sec group for the cluste
+func ensureInternetGateway(cfg aws.Config, vpcID string) (string, error) {
+	ctx := context.Background()
+	svc := ec2.NewFromConfig(cfg)
+
+	describeInternetGatewaysInput := &ec2.DescribeInternetGatewaysInput{
+		Filters: []ec2types.Filter{
+			{
+				Name: aws.String("tag-key"),
+				Values: []string{
+					"replicatedhq/kubectl-grid",
+				},
+			},
+		},
+	}
+	describeInternetGatewaysResult, err := svc.DescribeInternetGateways(ctx, describeInternetGatewaysInput)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to describe internet gateways")
+	}
+	if len(describeInternetGatewaysResult.InternetGateways) > 0 {
+		return *describeInternetGatewaysResult.InternetGateways[0].InternetGatewayId, nil
+	}
+
+	createInternetGatewayInput := &ec2.CreateInternetGatewayInput{
+		TagSpecifications: []ec2types.TagSpecification{
+			{
+				ResourceType: ec2types.ResourceTypeInternetGateway,
+				Tags: []ec2types.Tag{
+					{
+						Key:   aws.String("replicatedhq/kubectl-grid"),
+						Value: aws.String("1"),
+					},
+				},
+			},
+		},
+	}
+
+	createInternetGatewayResult, err := svc.CreateInternetGateway(ctx, createInternetGatewayInput)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to create internet gateway")
+	}
+
+	attachInternetGatewayInput := &ec2.AttachInternetGatewayInput{
+		InternetGatewayId: createInternetGatewayResult.InternetGateway.InternetGatewayId,
+		VpcId:             aws.String(vpcID),
+	}
+	_, err = svc.AttachInternetGateway(ctx, attachInternetGatewayInput)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to attach internet gateway to vpc")
+	}
+
+	return *createInternetGatewayResult.InternetGateway.InternetGatewayId, nil
+}
+
 func ensureEKSClusterSecurityGroup(cfg aws.Config, vpcID string) (string, error) {
 	svc := ec2.NewFromConfig(cfg)
 
@@ -226,7 +314,56 @@ func ensureEKSClusterSecurityGroup(cfg aws.Config, vpcID string) (string, error)
 	return *createSecurityGroupResult.GroupId, nil
 }
 
-func ensureEKSSubnets(cfg aws.Config, vpcID string) ([]string, error) {
+func ensurePrivateEKSSubnets(cfg aws.Config, vpcID string) ([]string, error) {
+	svc := ec2.NewFromConfig(cfg)
+
+	describeSubnetsInput := &ec2.DescribeSubnetsInput{
+		Filters: []ec2types.Filter{
+			{
+				Name: aws.String("tag-key"),
+				Values: []string{
+					"replicatedhq/kubectl-grid",
+					"replicatedhq/private",
+				},
+			},
+		},
+	}
+	describeSubnetsResult, err := svc.DescribeSubnets(context.Background(), describeSubnetsInput)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to describe subnets")
+	}
+
+	subnetIDs := []string{}
+	for _, subnet := range describeSubnetsResult.Subnets {
+		for _, tag := range subnet.Tags {
+			if tag.Key != nil && *tag.Key == "replicatedhq/private" {
+				subnetIDs = append(subnetIDs, *subnet.SubnetId)
+			}
+		}
+	}
+
+	if len(subnetIDs) > 0 {
+		// this is rough, if any succeed, it will return that list
+		return subnetIDs, nil
+	}
+
+	subnetID, err := createSubnetInVPC(cfg, vpcID, "172.24.100.0/24", "us-west-1a", "replicatedhq/private")
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create subnet")
+	}
+	subnetIDs = append(subnetIDs, subnetID)
+
+	subnetID, err = createSubnetInVPC(cfg, vpcID, "172.24.101.0/24", "us-west-1b", "replicatedhq/private")
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create subnet")
+	}
+	subnetIDs = append(subnetIDs, subnetID)
+
+	return subnetIDs, nil
+}
+
+func ensurePublicEKSSubnet(cfg aws.Config, vpcID string) (string, error) {
+	ctx := context.Background()
 	svc := ec2.NewFromConfig(cfg)
 
 	describeSubnetsInput := &ec2.DescribeSubnetsInput{
@@ -239,38 +376,317 @@ func ensureEKSSubnets(cfg aws.Config, vpcID string) ([]string, error) {
 			},
 		},
 	}
-	describeSubnetsResult, err := svc.DescribeSubnets(context.Background(), describeSubnetsInput)
+	describeSubnetsResult, err := svc.DescribeSubnets(ctx, describeSubnetsInput)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to describe subnets")
+		return "", errors.Wrap(err, "failed to describe subnets")
 	}
-	if len(describeSubnetsResult.Subnets) > 0 {
-		// this is rough, if any succeed, it will return that list
-		subnetIDs := []string{}
-		for _, s := range describeSubnetsResult.Subnets {
-			subnetIDs = append(subnetIDs, *s.SubnetId)
+	for _, subnet := range describeSubnetsResult.Subnets {
+		for _, tag := range subnet.Tags {
+			if tag.Key != nil && *tag.Key == "replicatedhq/public" {
+				return *subnet.SubnetId, nil
+			}
 		}
-
-		return subnetIDs, nil
 	}
 
-	subnetIDs := []string{}
-
-	subnetID, err := createSubnetInVPC(cfg, vpcID, "172.24.100.0/24", "us-west-1a")
+	subnetID, err := createSubnetInVPC(cfg, vpcID, "172.24.102.0/24", "us-west-1a", "replicatedhq/public")
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create subnet")
+		return "", errors.Wrap(err, "failed to create subnet")
 	}
-	subnetIDs = append(subnetIDs, subnetID)
 
-	subnetID, err = createSubnetInVPC(cfg, vpcID, "172.24.101.0/24", "us-west-1b")
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create subnet")
-	}
-	subnetIDs = append(subnetIDs, subnetID)
-
-	return subnetIDs, nil
+	return subnetID, nil
 }
 
-func createSubnetInVPC(cfg aws.Config, vpcID string, cidrBlock string, az string) (string, error) {
+func ensurePrivateSubnetRouteTable(cfg aws.Config, vpcID string, subnetID string, natGatewayID string) error {
+	ctx := context.Background()
+	svc := ec2.NewFromConfig(cfg)
+
+	describeRouteTablesInput := &ec2.DescribeRouteTablesInput{
+		Filters: []ec2types.Filter{
+			{
+				Name: aws.String("tag-key"),
+				Values: []string{
+					"replicatedhq/kubectl-grid",
+				},
+			},
+		},
+	}
+	describeRouteTablesResult, err := svc.DescribeRouteTables(ctx, describeRouteTablesInput)
+	if err != nil {
+		return errors.Wrap(err, "failed to describe route tables")
+	}
+
+	var routeTable *ec2types.RouteTable
+
+FindRouteTable:
+	for _, rt := range describeRouteTablesResult.RouteTables {
+		for _, tag := range rt.Tags {
+			if tag.Key != nil && *tag.Key == "replicatedhq/subnet-id" && tag.Value != nil && *tag.Value == subnetID {
+				routeTable = &rt
+				break FindRouteTable
+			}
+		}
+	}
+
+	if routeTable == nil {
+		createRouteTableInput := &ec2.CreateRouteTableInput{
+			VpcId: aws.String(vpcID),
+			TagSpecifications: []ec2types.TagSpecification{
+				{
+					ResourceType: ec2types.ResourceTypeRouteTable,
+					Tags: []ec2types.Tag{
+						{
+							Key:   aws.String("replicatedhq/kubectl-grid"),
+							Value: aws.String("1"),
+						},
+						{
+							Key:   aws.String("replicatedhq/subnet-id"),
+							Value: aws.String(subnetID),
+						},
+					},
+				},
+			},
+		}
+		createRouteTableResult, err := svc.CreateRouteTable(ctx, createRouteTableInput)
+		if err != nil {
+			return errors.Wrap(err, "failed to create private route table")
+		}
+
+		routeTable = createRouteTableResult.RouteTable
+	}
+
+	associateRouteTableInput := &ec2.AssociateRouteTableInput{
+		RouteTableId: routeTable.RouteTableId,
+		SubnetId:     aws.String(subnetID),
+	}
+	_, err = svc.AssociateRouteTable(ctx, associateRouteTableInput)
+	if err != nil {
+		if !strings.Contains(err.Error(), "Resource.AlreadyAssociated") {
+			return errors.Wrap(err, "failed to associate route table with subnet")
+		}
+	}
+
+	// TODO: update route if it exists
+	createRouteInput := &ec2.CreateRouteInput{
+		RouteTableId:         routeTable.RouteTableId,
+		NatGatewayId:         aws.String(natGatewayID),
+		DestinationCidrBlock: aws.String("0.0.0.0/0"),
+	}
+	_, err = svc.CreateRoute(ctx, createRouteInput)
+	if err != nil {
+		if !strings.Contains(err.Error(), "RouteAlreadyExists") {
+			return errors.Wrap(err, "failed to create private route")
+		}
+	}
+
+	return nil
+}
+
+func ensurePublicSubnetRouteTable(cfg aws.Config, vpcID string, subnetID string, igwID string) error {
+	ctx := context.Background()
+	svc := ec2.NewFromConfig(cfg)
+
+	describeRouteTablesInput := &ec2.DescribeRouteTablesInput{
+		Filters: []ec2types.Filter{
+			{
+				Name: aws.String("tag-key"),
+				Values: []string{
+					"replicatedhq/kubectl-grid",
+				},
+			},
+		},
+	}
+	describeRouteTablesResult, err := svc.DescribeRouteTables(ctx, describeRouteTablesInput)
+	if err != nil {
+		return errors.Wrap(err, "failed to describe route tables")
+	}
+
+	var routeTable *ec2types.RouteTable
+
+FindRouteTable:
+	for _, rt := range describeRouteTablesResult.RouteTables {
+		for _, tag := range rt.Tags {
+			if tag.Key != nil && *tag.Key == "replicatedhq/subnet-id" && tag.Value != nil && *tag.Value == subnetID {
+				routeTable = &rt
+				break FindRouteTable
+			}
+		}
+	}
+
+	if routeTable == nil {
+		createRouteTableInput := &ec2.CreateRouteTableInput{
+			VpcId: aws.String(vpcID),
+			TagSpecifications: []ec2types.TagSpecification{
+				{
+					ResourceType: ec2types.ResourceTypeRouteTable,
+					Tags: []ec2types.Tag{
+						{
+							Key:   aws.String("replicatedhq/kubectl-grid"),
+							Value: aws.String("1"),
+						},
+						{
+							Key:   aws.String("replicatedhq/subnet-id"),
+							Value: aws.String(subnetID),
+						},
+					},
+				},
+			},
+		}
+		createRouteTableResult, err := svc.CreateRouteTable(ctx, createRouteTableInput)
+		if err != nil {
+			return errors.Wrap(err, "failed to create public route table")
+		}
+
+		routeTable = createRouteTableResult.RouteTable
+	}
+
+	associateRouteTableInput := &ec2.AssociateRouteTableInput{
+		RouteTableId: routeTable.RouteTableId,
+		SubnetId:     aws.String(subnetID),
+	}
+	_, err = svc.AssociateRouteTable(ctx, associateRouteTableInput)
+	if err != nil {
+		if !strings.Contains(err.Error(), "Resource.AlreadyAssociated") {
+			return errors.Wrap(err, "failed to associate route table with subnet")
+		}
+	}
+
+	createRouteInput := &ec2.CreateRouteInput{
+		RouteTableId:         routeTable.RouteTableId,
+		GatewayId:            aws.String(igwID),
+		DestinationCidrBlock: aws.String("0.0.0.0/0"),
+	}
+	_, err = svc.CreateRoute(ctx, createRouteInput)
+	if err != nil {
+		return errors.Wrap(err, "failed to create public route")
+	}
+
+	return nil
+}
+
+func ensureElasticIP(cfg aws.Config) (string, error) {
+	ctx := context.Background()
+	svc := ec2.NewFromConfig(cfg)
+
+	describeAddressesInput := &ec2.DescribeAddressesInput{
+		Filters: []ec2types.Filter{
+			{
+				Name: aws.String("tag-key"),
+				Values: []string{
+					"replicatedhq/kubectl-grid",
+				},
+			},
+		},
+	}
+	describeAddressesResult, err := svc.DescribeAddresses(ctx, describeAddressesInput)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to describe addresses")
+	}
+	if len(describeAddressesResult.Addresses) > 0 {
+		// this address may already be associated, but then it should be associated with our NAT gateway anyway
+		return *describeAddressesResult.Addresses[0].AllocationId, nil
+	}
+
+	allocateAddressInput := &ec2.AllocateAddressInput{
+		TagSpecifications: []ec2types.TagSpecification{
+			{
+				ResourceType: ec2types.ResourceTypeElasticIp,
+				Tags: []ec2types.Tag{
+					{
+						Key:   aws.String("replicatedhq/kubectl-grid"),
+						Value: aws.String("1"),
+					},
+				},
+			},
+		},
+	}
+
+	allocateAddressResult, err := svc.AllocateAddress(ctx, allocateAddressInput)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to allocate address")
+	}
+
+	return *allocateAddressResult.AllocationId, nil
+}
+
+func ensureNATGateway(cfg aws.Config, subnetID string, allocationID string) (string, error) {
+	ctx := context.Background()
+	svc := ec2.NewFromConfig(cfg)
+
+	describeNatGatewaysInput := &ec2.DescribeNatGatewaysInput{
+		Filter: []ec2types.Filter{
+			{
+				Name: aws.String("tag-key"),
+				Values: []string{
+					"replicatedhq/kubectl-grid",
+				},
+			},
+		},
+	}
+	describeNatGatewaysResult, err := svc.DescribeNatGateways(ctx, describeNatGatewaysInput)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to describe nat gateways")
+	}
+	for _, gw := range describeNatGatewaysResult.NatGateways {
+		if gw.State == ec2types.NatGatewayStatePending || gw.State == ec2types.NatGatewayStateAvailable {
+			return *gw.NatGatewayId, nil
+		}
+	}
+
+	createNatGatewayInput := &ec2.CreateNatGatewayInput{
+		AllocationId: aws.String(allocationID),
+		SubnetId:     aws.String(subnetID),
+		TagSpecifications: []ec2types.TagSpecification{
+			{
+				ResourceType: ec2types.ResourceTypeNatgateway,
+				Tags: []ec2types.Tag{
+					{
+						Key:   aws.String("replicatedhq/kubectl-grid"),
+						Value: aws.String("1"),
+					},
+				},
+			},
+		},
+	}
+
+	createNatGatewayResult, err := svc.CreateNatGateway(ctx, createNatGatewayInput)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to create nat gateway")
+	}
+
+	gwID := *createNatGatewayResult.NatGateway.NatGatewayId
+
+	if err := waitForNATGateway(cfg, gwID); err != nil {
+		return "", errors.Wrap(err, "failed to wait for nat gateway")
+	}
+
+	return gwID, nil
+}
+
+func waitForNATGateway(cfg aws.Config, natGatewayID string) error {
+	ctx := context.Background()
+	svc := ec2.NewFromConfig(cfg)
+
+	for i := 0; i < 10; i++ {
+		describeNatGatewaysInput := &ec2.DescribeNatGatewaysInput{
+			NatGatewayIds: []string{natGatewayID},
+		}
+		describeNatGatewaysResult, err := svc.DescribeNatGateways(ctx, describeNatGatewaysInput)
+		if err != nil {
+			return errors.Wrap(err, "failed to describe nat gateways")
+		}
+		for _, gw := range describeNatGatewaysResult.NatGateways {
+			if gw.State == ec2types.NatGatewayStateAvailable {
+				return nil
+			}
+		}
+
+		time.Sleep(10 * time.Second)
+	}
+
+	return errors.New("timed out")
+}
+
+func createSubnetInVPC(cfg aws.Config, vpcID string, cidrBlock string, az string, tag string) (string, error) {
 	svc := ec2.NewFromConfig(cfg)
 
 	createSubnetInput := &ec2.CreateSubnetInput{
@@ -283,6 +699,10 @@ func createSubnetInVPC(cfg aws.Config, vpcID string, cidrBlock string, az string
 				Tags: []ec2types.Tag{
 					{
 						Key:   aws.String("replicatedhq/kubectl-grid"),
+						Value: aws.String("1"),
+					},
+					{
+						Key:   aws.String(tag),
 						Value: aws.String("1"),
 					},
 				},
@@ -383,6 +803,7 @@ func attachRolePolicy(cfg aws.Config, policyName string) error {
 
 	return nil
 }
+
 func ensureEKSCluterControlPlane(cfg aws.Config, newEKSCluster *types.EKSNewClusterSpec, clusterName string, vpc *types.AWSVPC) (*ekstypes.Cluster, error) {
 	svc := eks.NewFromConfig(cfg)
 
@@ -396,7 +817,7 @@ func ensureEKSCluterControlPlane(cfg aws.Config, newEKSCluster *types.EKSNewClus
 		Name:               aws.String(clusterName),
 		ResourcesVpcConfig: &ekstypes.VpcConfigRequest{
 			SecurityGroupIds: vpc.SecurityGroupIDs,
-			SubnetIds:        vpc.SubnetIDs,
+			SubnetIds:        vpc.PrivateSubnetIDs,
 		},
 		RoleArn: aws.String(vpc.RoleArn),
 		Version: aws.String(version),
@@ -450,7 +871,7 @@ func ensureEKSClusterNodeGroup(cfg aws.Config, cluster *ekstypes.Cluster, cluste
 		ClusterName:   aws.String(clusterName),
 		NodeRole:      aws.String(vpc.RoleArn),
 		NodegroupName: aws.String(clusterName),
-		Subnets:       vpc.SubnetIDs,
+		Subnets:       vpc.PrivateSubnetIDs,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create eks node group")
