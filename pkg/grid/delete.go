@@ -37,6 +37,6 @@ func deleteCluster(c *types.ClusterConfig) error {
 func deleteEKSCluster(c *types.ClusterConfig) error {
 	clusterName := c.GetDeterministicClusterName()
 
-	fmt.Printf("%s\n", clusterName)
+	fmt.Printf("This did nothing, but cluster name is %s\n", clusterName)
 	return nil
 }

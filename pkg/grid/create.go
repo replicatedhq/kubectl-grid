@@ -203,7 +203,7 @@ func createNewEKSCluter(gridName string, newEKSCluster *types.EKSNewClusterSpec,
 	log.Info("Creating VPC for EKS cluster")
 	vpc, err := ensureEKSClusterVPC(cfg)
 	if err != nil {
-		completedCh <- fmt.Sprintf("failed to create security group: %s", err.Error())
+		completedCh <- fmt.Sprintf("failed to create EKS cluster vpc: %s", err.Error())
 		return
 	}
 
