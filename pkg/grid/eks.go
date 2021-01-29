@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -16,9 +17,27 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
+	smithy "github.com/aws/smithy-go"
 	"github.com/pkg/errors"
 	"github.com/replicatedhq/kubectl-grid/pkg/grid/types"
 )
+
+func isEKSNotFound(err error) bool {
+	err = errors.Cause(err)
+
+	smErr, ok := err.(*smithy.OperationError)
+	if !ok {
+		return false
+	}
+
+	httpErr, ok := smErr.Err.(*awshttp.ResponseError)
+	if !ok {
+		return false
+	}
+
+	_, ok = httpErr.ResponseError.Err.(*ekstypes.ResourceNotFoundException)
+	return ok
+}
 
 func GetEKSClusterKubeConfig(region string, accessKeyID string, secretAccessKey string, clusterName string) (string, error) {
 	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
@@ -878,4 +897,59 @@ func ensureEKSClusterNodeGroup(cfg aws.Config, cluster *ekstypes.Cluster, cluste
 	}
 
 	return nodeGroup.Nodegroup, nil
+}
+
+func deleteEKSNodeGroup(cfg aws.Config, clusterName string, groupName string) error {
+	svc := eks.NewFromConfig(cfg)
+
+	deleteNodegroupInput := &eks.DeleteNodegroupInput{
+		ClusterName:   aws.String(clusterName),
+		NodegroupName: aws.String(groupName),
+	}
+	_, err := svc.DeleteNodegroup(context.Background(), deleteNodegroupInput)
+	if err != nil && !isEKSNotFound(err) {
+		return errors.Wrap(err, "failed to delete node group")
+	}
+
+	return nil
+}
+
+func waitEKSNodeGroupGone(cfg aws.Config, clusterName string, groupName string) error {
+	svc := eks.NewFromConfig(cfg)
+
+	for i := 0; i < 24; i++ {
+		describeNodegroupInput := &eks.DescribeNodegroupInput{
+			ClusterName:   aws.String(clusterName),
+			NodegroupName: aws.String(groupName),
+		}
+		_, err := svc.DescribeNodegroup(context.Background(), describeNodegroupInput)
+		if err != nil {
+			if isEKSNotFound(err) {
+				return nil
+			}
+			return errors.Wrap(err, "failed to describe node group")
+		}
+
+		time.Sleep(10 * time.Second)
+	}
+
+	return errors.New("timed out")
+}
+
+func deleteEKSCluster(cfg aws.Config, clusterName string) error {
+	svc := eks.NewFromConfig(cfg)
+
+	deleteClusterInput := &eks.DeleteClusterInput{
+		Name: aws.String(clusterName),
+	}
+
+	_, err := svc.DeleteCluster(context.Background(), deleteClusterInput)
+	if err != nil {
+		if isEKSNotFound(err) {
+			return nil
+		}
+		return errors.Wrap(err, "failed to delete cluster")
+	}
+
+	return nil
 }

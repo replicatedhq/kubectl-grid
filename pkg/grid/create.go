@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -154,7 +155,8 @@ func connectExistingEKSCluster(gridName string, existingEKSCluster *types.EKSExi
 	}
 
 	clusterConfig := types.ClusterConfig{
-		Name:       fmt.Sprintf("aws-%s-%s", existingEKSCluster.Region, existingEKSCluster.ClusterName),
+		Name: existingEKSCluster.ClusterName,
+		// Description:
 		Provider:   "aws",
 		IsExisting: true,
 		Region:     existingEKSCluster.Region,
@@ -210,8 +212,10 @@ func createNewEKSCluter(gridName string, newEKSCluster *types.EKSNewClusterSpec,
 	log.Info("Creating EKS Cluster Control Plane")
 	cluster, err := ensureEKSCluterControlPlane(cfg, newEKSCluster, clusterName, vpc)
 	if err != nil {
-		completedCh <- fmt.Sprintf("failed to create eks cluster control plane: %s", err.Error())
-		return
+		if !strings.Contains(err.Error(), "Cluster already exists with name") {
+			completedCh <- fmt.Sprintf("failed to create eks cluster control plane: %s", err.Error())
+			return
+		}
 	}
 
 	log.Info("Waiting for EKS Cluster Control Plane to be ready (this can take a while, 15 minutes is not unusual)")
@@ -223,21 +227,24 @@ func createNewEKSCluter(gridName string, newEKSCluster *types.EKSNewClusterSpec,
 	log.Info("Creating EKS Cluster Node Group")
 	_, err = ensureEKSClusterNodeGroup(cfg, cluster, clusterName, vpc)
 	if err != nil {
-		completedCh <- fmt.Sprintf("failed to create eks cluster node pool: %s", err.Error())
-		return
+		if !strings.Contains(err.Error(), "NodeGroup already exists") {
+			completedCh <- fmt.Sprintf("failed to create eks cluster node pool: %s", err.Error())
+			return
+		}
 	}
 
-	kubeConfig, err := GetEKSClusterKubeConfig(newEKSCluster.Region, accessKeyID, secretAccessKey, *cluster.Name)
+	kubeConfig, err := GetEKSClusterKubeConfig(newEKSCluster.Region, accessKeyID, secretAccessKey, clusterName)
 	if err != nil {
 		completedCh <- fmt.Sprintf("failed to get kubeconfig from eks cluster: %s", err.Error())
 	}
 
 	clusterConfig := types.ClusterConfig{
-		Name:       fmt.Sprintf("aws-%s-%s", newEKSCluster.Region, *cluster.Name),
-		Provider:   "aws",
-		IsExisting: false,
-		Region:     newEKSCluster.Region,
-		Kubeconfig: kubeConfig,
+		Name:        clusterName,
+		Description: newEKSCluster.Description,
+		Provider:    "aws",
+		IsExisting:  false,
+		Region:      newEKSCluster.Region,
+		Kubeconfig:  kubeConfig,
 	}
 
 	func() {
@@ -261,6 +268,12 @@ func createNewEKSCluter(gridName string, newEKSCluster *types.EKSNewClusterSpec,
 
 	if err := ensureEKSAuthMap(&clusterConfig, vpc.RoleArn); err != nil {
 		completedCh <- fmt.Sprintf("failed to ensure aws-auth configmap: %s", err.Error())
+	}
+
+	log.Info("Waiting for nodes to become ready")
+	if err := waitForNodes(&clusterConfig); err != nil {
+		completedCh <- fmt.Sprintf("failed to wait for nodes to join: %s", err.Error())
+		return
 	}
 
 	completedCh <- ""
@@ -294,4 +307,30 @@ data:
 	}
 
 	return nil
+}
+
+func waitForNodes(c *types.ClusterConfig) error {
+	sleepTime := 10 * time.Second
+	for i := 0; i < 12; i++ {
+		nodes, err := kubectl.GetNodes(c)
+		if err != nil {
+			return errors.Wrap(err, "failed to get nodes")
+		}
+
+		numReady := 0
+		for _, n := range nodes.Items {
+			for _, c := range n.Status.Conditions {
+				if c.Reason == "KubeletReady" && c.Status == "True" && c.Type == "Ready" {
+					numReady++
+				}
+			}
+		}
+		if len(nodes.Items) == numReady {
+			return nil
+		}
+
+		time.Sleep(sleepTime)
+	}
+
+	return errors.New("timed out")
 }
