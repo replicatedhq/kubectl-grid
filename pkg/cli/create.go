@@ -1,9 +1,9 @@
 package cli
 
 import (
-	"errors"
 	"io/ioutil"
 
+	"github.com/pkg/errors"
 	"github.com/replicatedhq/kubectl-grid/pkg/grid"
 	"github.com/replicatedhq/kubectl-grid/pkg/grid/types"
 	"github.com/spf13/cobra"
@@ -28,12 +28,12 @@ func CreateCmd() *cobra.Command {
 
 			data, err := ioutil.ReadFile(v.GetString("from-yaml"))
 			if err != nil {
-				return err
+				return errors.Wrap(err, "failed to read from-yaml file")
 			}
 
 			gridSpec := types.Grid{}
 			if err := yaml.Unmarshal(data, &gridSpec); err != nil {
-				return err
+				return errors.Wrapf(err, "failed to unmarshal %s", v.GetString("from-yaml"))
 			}
 
 			if v.GetString("name") != "" {
@@ -41,8 +41,17 @@ func CreateCmd() *cobra.Command {
 			}
 
 			if err := grid.Create(v.GetString("config-file"), &gridSpec); err != nil {
-				return err
+				return errors.Wrap(err, "failed to create cluster")
 			}
+
+			if v.GetString("app") == "" {
+				return nil
+			}
+
+			if err := deployApp(v.GetString("config-file"), gridSpec.Name, v.GetString("app")); err != nil {
+				return errors.Wrap(err, "failed to deploy app")
+			}
+
 			return nil
 		},
 	}
@@ -50,6 +59,7 @@ func CreateCmd() *cobra.Command {
 	cmd.Flags().StringP("name", "n", "", "Name of the grid, overriding the name in the yaml metadata.name field")
 	cmd.Flags().String("from-yaml", "", "Path to YAML manifest describing the grid to create")
 	cmd.Flags().String("like", "", "Name of an existing grid to clone, into a new grid")
+	cmd.Flags().String("app", "", "Path to YAML manifest describing the application to deploy after grid is created")
 
 	return cmd
 }

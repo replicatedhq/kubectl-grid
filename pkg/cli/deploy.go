@@ -1,9 +1,9 @@
 package cli
 
 import (
-	"errors"
 	"io/ioutil"
 
+	"github.com/pkg/errors"
 	"github.com/replicatedhq/kubectl-grid/pkg/app"
 	"github.com/replicatedhq/kubectl-grid/pkg/grid"
 	"github.com/replicatedhq/kubectl-grid/pkg/grid/types"
@@ -23,32 +23,7 @@ func DeployCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			v := viper.GetViper()
 
-			data, err := ioutil.ReadFile(v.GetString("app"))
-			if err != nil {
-				return err
-			}
-
-			application := types.Application{}
-			if err := yaml.Unmarshal(data, &application); err != nil {
-				return err
-			}
-
-			grids, err := grid.List(v.GetString("config-file"))
-			if err != nil {
-				return err
-			}
-
-			for _, g := range grids {
-				if g.Name == v.GetString("grid") {
-					if err := app.Deploy(g, &application); err != nil {
-						return err
-					}
-
-					return nil
-				}
-			}
-
-			return errors.New("unable to find grid")
+			return deployApp(v.GetString("config-file"), v.GetString("grid"), v.GetString("app"))
 		},
 	}
 
@@ -56,4 +31,33 @@ func DeployCmd() *cobra.Command {
 	cmd.Flags().String("app", "", "Path to YAML manifest describing the application to deploy")
 
 	return cmd
+}
+
+func deployApp(configFile string, gridName string, appSpecFilename string) error {
+	data, err := ioutil.ReadFile(appSpecFilename)
+	if err != nil {
+		return errors.Wrap(err, "failed to read app spec file")
+	}
+
+	application := types.Application{}
+	if err := yaml.Unmarshal(data, &application); err != nil {
+		return errors.Wrap(err, "failed to unmarshal app spec")
+	}
+
+	grids, err := grid.List(configFile)
+	if err != nil {
+		return errors.Wrap(err, "failed to list grids")
+	}
+
+	for _, g := range grids {
+		if g.Name == gridName {
+			if err := app.Deploy(g, &application); err != nil {
+				return errors.Wrap(err, "failed to deploy app")
+			}
+
+			return nil
+		}
+	}
+
+	return errors.New("unable to find grid")
 }
