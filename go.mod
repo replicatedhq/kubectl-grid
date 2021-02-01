@@ -9,6 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ec2 v0.31.0
 	github.com/aws/aws-sdk-go-v2/service/eks v0.31.0
 	github.com/aws/aws-sdk-go-v2/service/iam v0.31.0
+	github.com/aws/smithy-go v0.5.0
 	github.com/fatih/color v1.7.0
 	github.com/gosimple/slug v1.9.0
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 // indirect
@@ -16,6 +17,7 @@ require (
 	github.com/mattn/go-isatty v0.0.12
 	github.com/pkg/errors v0.9.1
 	github.com/replicatedhq/kots v1.27.0
+	github.com/slack-go/slack v0.8.0
 	github.com/spf13/cobra v1.1.1
 	github.com/spf13/viper v1.7.0
 	github.com/stretchr/testify v1.6.1

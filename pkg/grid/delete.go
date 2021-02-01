@@ -33,7 +33,10 @@ func Delete(configFilePath string, g *types.Grid) error {
 				wg.Add(1)
 				go func(config *types.ClusterConfig, cluster *types.ClusterSpec) {
 					defer wg.Done()
-					err := deleteCluster(config, cluster)
+
+					log := logger.NewLogger(g.Spec.Logger)
+
+					err := deleteCluster(config, cluster, log)
 					if err != nil {
 						fmt.Printf("cluster %s delete failed with error: %v\n", config.Name, err)
 					}
@@ -51,18 +54,17 @@ func Delete(configFilePath string, g *types.Grid) error {
 	return nil
 }
 
-func deleteCluster(c *types.ClusterConfig, cluster *types.ClusterSpec) error {
+func deleteCluster(c *types.ClusterConfig, cluster *types.ClusterSpec, log logger.Logger) error {
 	if c.Provider == "aws" {
-		return deleteNewEKSCluster(c, cluster.EKS)
+		return deleteNewEKSCluster(c, cluster.EKS, log)
 	}
 
 	return nil
 }
 
-func deleteNewEKSCluster(c *types.ClusterConfig, cluster *types.EKSSpec) error {
+func deleteNewEKSCluster(c *types.ClusterConfig, cluster *types.EKSSpec, log logger.Logger) error {
 	clusterName := c.GetDeterministicClusterName()
 
-	log := logger.NewLogger()
 	log.Info("Deleting EKS cluster %s", clusterName)
 
 	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(c.Region))

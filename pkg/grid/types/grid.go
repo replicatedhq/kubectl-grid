@@ -15,6 +15,7 @@ type Grid struct {
 
 type GridSpec struct {
 	Clusters []*ClusterSpec `json:"clusters"`
+	Logger   LoggerSpec     `json:"logger"`
 }
 
 type ClusterSpec struct {
@@ -39,6 +40,15 @@ type EKSNewClusterSpec struct {
 	AccessKeyID     ValueOrValueFrom `json:"accessKeyId"`
 	SecretAccessKey ValueOrValueFrom `json:"secretAccessKey"`
 	Region          string           `json:"region"`
+}
+
+type LoggerSpec struct {
+	Slack *SlackLoggerSpec `json:"slack,omitempty"`
+}
+
+type SlackLoggerSpec struct {
+	Token   ValueOrValueFrom `json:"token,omitempty"`
+	Channel ValueOrValueFrom `json:"channel,omitempty"`
 }
 
 func (c EKSNewClusterSpec) GetDeterministicClusterName() string {

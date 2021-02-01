@@ -3,6 +3,14 @@ kind: Grid
 metadata:
   name: eks-existing
 spec:
+  logger:
+     slack:
+        token:
+          valueFrom:
+            osEnv: SLACK_TOKEN
+        channel:
+          valueFrom:
+            osEnv: SLACK_CHANNEL
   clusters:
     # - eks:
     #     existingCluster:
