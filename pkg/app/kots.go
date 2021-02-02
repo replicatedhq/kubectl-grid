@@ -125,7 +125,7 @@ func isApplicationReady(c *types.ClusterConfig, kotsAppSpec *types.KOTSApplicati
 	select {
 	case <-timeout:
 		cmd.Process.Kill()
-		fmt.Printf("command timed out.  received std out: %s\n", stdout.String())
+		fmt.Printf("timedout waiting for app ready.  received std out: %s\n", stdout.String())
 		return false, nil
 	case err := <-done:
 		if err != nil {
@@ -227,12 +227,12 @@ func deployKOTSApplication(c *types.ClusterConfig, kotsAppSpec *types.KOTSApplic
 	go func() {
 		done <- cmd.Wait()
 	}()
-	timeout := time.After(time.Minute)
+	timeout := time.After(10 * time.Minute) // TODO: app deploy already has a timeout
 
 	select {
 	case <-timeout:
 		cmd.Process.Kill()
-		fmt.Printf("command timed out.  received std out: %s\n", stdout.String())
+		fmt.Printf("timeoud out deploying app.  received std out: %s\n", stdout.String())
 	case err := <-done:
 		if err != nil {
 			return errors.Wrap(err, "failed to run kots")

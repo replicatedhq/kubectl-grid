@@ -10,7 +10,7 @@ import (
 	"github.com/tj/go-spin"
 )
 
-type Logger struct {
+type TerminalLogger struct {
 	spinnerStopCh chan bool
 	spinnerMsg    string
 	spinnerArgs   []interface{}
@@ -18,25 +18,25 @@ type Logger struct {
 	isVerbose     bool
 }
 
-func NewLogger() *Logger {
-	return &Logger{}
+func NewTerminalLogger() Logger {
+	return &TerminalLogger{}
 }
 
-func (l *Logger) Silence() {
+func (l *TerminalLogger) Silence() {
 	if l == nil {
 		return
 	}
 	l.isSilent = true
 }
 
-func (l *Logger) Verbose() {
+func (l *TerminalLogger) Verbose() {
 	if l == nil {
 		return
 	}
 	l.isVerbose = true
 }
 
-func (l *Logger) Initialize() {
+func (l *TerminalLogger) Initialize() {
 	if l == nil || l.isSilent {
 		return
 	}
@@ -44,7 +44,7 @@ func (l *Logger) Initialize() {
 	fmt.Println("")
 }
 
-func (l *Logger) Finish() {
+func (l *TerminalLogger) Finish() {
 	if l == nil || l.isSilent {
 		return
 	}
@@ -52,7 +52,7 @@ func (l *Logger) Finish() {
 	fmt.Println("")
 }
 
-func (l *Logger) Debug(msg string, args ...interface{}) {
+func (l *TerminalLogger) Debug(msg string, args ...interface{}) {
 	if l == nil || l.isSilent || !l.isVerbose {
 		return
 	}
@@ -62,7 +62,7 @@ func (l *Logger) Debug(msg string, args ...interface{}) {
 	fmt.Println("")
 }
 
-func (l *Logger) Info(msg string, args ...interface{}) {
+func (l *TerminalLogger) Info(msg string, args ...interface{}) {
 	if l == nil || l.isSilent {
 		return
 	}
@@ -72,7 +72,7 @@ func (l *Logger) Info(msg string, args ...interface{}) {
 	fmt.Println("")
 }
 
-func (l *Logger) ActionWithoutSpinner(msg string, args ...interface{}) {
+func (l *TerminalLogger) ActionWithoutSpinner(msg string, args ...interface{}) {
 	if l == nil || l.isSilent {
 		return
 	}
@@ -86,7 +86,7 @@ func (l *Logger) ActionWithoutSpinner(msg string, args ...interface{}) {
 	fmt.Println(fmt.Sprintf(msg, args...))
 }
 
-func (l *Logger) ChildActionWithoutSpinner(msg string, args ...interface{}) {
+func (l *TerminalLogger) ChildActionWithoutSpinner(msg string, args ...interface{}) {
 	if l == nil || l.isSilent {
 		return
 	}
@@ -95,7 +95,7 @@ func (l *Logger) ChildActionWithoutSpinner(msg string, args ...interface{}) {
 	fmt.Println(fmt.Sprintf(msg, args...))
 }
 
-func (l *Logger) ActionWithSpinner(msg string, args ...interface{}) {
+func (l *TerminalLogger) ActionWithSpinner(msg string, args ...interface{}) {
 	if l == nil || l.isSilent {
 		return
 	}
@@ -128,7 +128,7 @@ func (l *Logger) ActionWithSpinner(msg string, args ...interface{}) {
 	}
 }
 
-func (l *Logger) ChildActionWithSpinner(msg string, args ...interface{}) {
+func (l *TerminalLogger) ChildActionWithSpinner(msg string, args ...interface{}) {
 	if l == nil || l.isSilent {
 		return
 	}
@@ -161,7 +161,7 @@ func (l *Logger) ChildActionWithSpinner(msg string, args ...interface{}) {
 	}
 }
 
-func (l *Logger) FinishChildSpinner() {
+func (l *TerminalLogger) FinishChildSpinner() {
 	if l == nil || l.isSilent {
 		return
 	}
@@ -180,7 +180,7 @@ func (l *Logger) FinishChildSpinner() {
 	}
 }
 
-func (l *Logger) FinishSpinner() {
+func (l *TerminalLogger) FinishSpinner() {
 	if l == nil || l.isSilent {
 		return
 	}
@@ -199,7 +199,7 @@ func (l *Logger) FinishSpinner() {
 	}
 }
 
-func (l *Logger) FinishSpinnerWithError() {
+func (l *TerminalLogger) FinishSpinnerWithError() {
 	if l == nil || l.isSilent {
 		return
 	}
@@ -218,7 +218,7 @@ func (l *Logger) FinishSpinnerWithError() {
 	}
 }
 
-func (l *Logger) Error(err error) {
+func (l *TerminalLogger) Error(err error) {
 	if l == nil || l.isSilent {
 		return
 	}

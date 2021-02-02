@@ -67,7 +67,8 @@ func Create(configFilePath string, g *types.Grid) error {
 
 	// start each
 	for i, cluster := range g.Spec.Clusters {
-		go createCluster(g.Name, cluster, completedChans[i], configFilePath)
+		log := logger.NewLogger(g.Spec.Logger)
+		go createCluster(g.Name, cluster, completedChans[i], configFilePath, log)
 	}
 
 	// wait for all channels to be closed
@@ -110,28 +111,28 @@ func addGridToConfig(configFilePath string, name string) error {
 
 // createCluster will create the cluster synchronously
 // when it's completed, it will return the error or "" as a string on the channel
-func createCluster(gridName string, cluster *types.ClusterSpec, completedCh chan string, configFilePath string) {
+func createCluster(gridName string, cluster *types.ClusterSpec, completedCh chan string, configFilePath string, log logger.Logger) {
 	if cluster.EKS != nil {
-		createEKSCluster(gridName, cluster.EKS, completedCh, configFilePath)
+		createEKSCluster(gridName, cluster.EKS, completedCh, configFilePath, log)
 		return
 	}
 
 	completedCh <- "unknown cluster"
 }
 
-func createEKSCluster(gridName string, eksCluster *types.EKSSpec, completedCh chan string, configFilePath string) {
+func createEKSCluster(gridName string, eksCluster *types.EKSSpec, completedCh chan string, configFilePath string, log logger.Logger) {
 	if eksCluster.ExistingCluster != nil {
-		connectExistingEKSCluster(gridName, eksCluster.ExistingCluster, completedCh, configFilePath)
+		connectExistingEKSCluster(gridName, eksCluster.ExistingCluster, completedCh, configFilePath, log)
 		return
 	} else if eksCluster.NewCluster != nil {
-		createNewEKSCluter(gridName, eksCluster.NewCluster, completedCh, configFilePath)
+		createNewEKSCluter(gridName, eksCluster.NewCluster, completedCh, configFilePath, log)
 		return
 	}
 
 	completedCh <- "eks cluster must have new or existing"
 }
 
-func connectExistingEKSCluster(gridName string, existingEKSCluster *types.EKSExistingClusterSpec, completedCh chan string, configFilePath string) {
+func connectExistingEKSCluster(gridName string, existingEKSCluster *types.EKSExistingClusterSpec, completedCh chan string, configFilePath string, log logger.Logger) {
 	accessKeyID, err := existingEKSCluster.AccessKeyID.String()
 	if err != nil {
 		completedCh <- fmt.Sprintf("failed to read access key id: %s", err.Error())
@@ -177,10 +178,9 @@ func connectExistingEKSCluster(gridName string, existingEKSCluster *types.EKSExi
 
 // createNewEKSCluster will create a complete, ready to use EKS cluster with all
 // security groups, vpcs, node pools, and everything else
-func createNewEKSCluter(gridName string, newEKSCluster *types.EKSNewClusterSpec, completedCh chan string, configFilePath string) {
+func createNewEKSCluter(gridName string, newEKSCluster *types.EKSNewClusterSpec, completedCh chan string, configFilePath string, log logger.Logger) {
 	clusterName := newEKSCluster.GetDeterministicClusterName()
 
-	log := logger.NewLogger()
 	log.Info("Creating EKS cluster with all required dependencies with name %s", clusterName)
 
 	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(newEKSCluster.Region))
